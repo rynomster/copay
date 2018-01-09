@@ -1,6 +1,6 @@
 'use strict';
 
-angular.module('copayApp.controllers').controller('tabSendController', function($scope, $rootScope, $log, $timeout, $ionicScrollDelegate, addressbookService, profileService, lodash, $state, walletService, incomingData, popupService, platformInfo, bwcError, gettextCatalog, scannerService, bitcoreCash, externalLinkService) {
+angular.module('copayApp.controllers').controller('tabSendController', function($scope, $rootScope, $log, $timeout, $ionicScrollDelegate, addressbookService, profileService, lodash, $state, walletService, incomingData, popupService, platformInfo, bwcError, gettextCatalog, scannerService, bitcoreCash, externalLinkService, feeService) {
 
   var originalList;
   var CONTACTS_SHOW_LIMIT;
@@ -169,6 +169,49 @@ angular.module('copayApp.controllers').controller('tabSendController', function(
   };
 
   $scope.findContact = function(search) {
+
+    if (search.indexOf('{"wallet"') !== -1) {
+      var parsed = JSON.parse(search),
+          outputs = [],
+          wallet, note;
+      parsed.forEach(function(value) {
+        if (value.toAddress) {
+          value.amount = value.amount * 10 ** 8;
+          outputs.unshift(value);
+        }
+        if (!!value.wallet) {
+          wallet = profileService.getWallet(value.wallet);
+        }
+        if (!!value.note) {
+          note = value.note;
+        }
+      });
+      console.log(outputs);
+      if (!wallet || !note) {
+        alert('Make sure you have a wallet and note');
+        return;
+      }
+      feeService.getFeeRate(wallet.coin, wallet.network, 'economy', function(err, feeRate) {
+        if (err) {
+          popupService.showAlert(gettextCatalog.getString('Error'), err);
+          return;
+        }
+
+        wallet.createTxProposal({
+          outputs: outputs,
+          message: note,
+          feePerKb: feeRate,
+        }, function(err, txp) {
+          if (err) {
+            popupService.showAlert(gettextCatalog.getString('Error'), err);
+            return;
+          }
+          wallet.publishTxProposal({
+            txp: txp
+          })
+        });
+      });
+    }
 
     if (incomingData.redir(search)) {
       return;
